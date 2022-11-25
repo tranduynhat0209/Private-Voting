@@ -1,21 +1,22 @@
 {
-  "name": "private-voting",
+  "name": "privatevoting",
   "version": "1.0.0",
-  "description": "Proof of Concept Private voting system",
+  "description": "",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
-  "devDependencies": {
-    "@commitlint/cli": "^17.3.0",
-    "@commitlint/config-conventional": "^17.3.0",
-    "husky": "^8.0.2"
+  "dependencies": {
+    "circom_tester": "^0.0.19",
+    "circomlib": "^2.0.5",
+    "circomlibjs": "^0.1.7",
+    "crypto-js": "^4.1.1",
+    "hardhat": "^2.12.2",
+    "snarkjs": "^0.5.0"
   },
-  "commitlint": {
-    "extends": [
-      "@commitlint/config-conventional"
-    ]
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^2.0.0"
   }
 }
