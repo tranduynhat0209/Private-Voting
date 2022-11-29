@@ -115,7 +115,7 @@ contract Voting {
         uint[2] memory c,
         uint256 pollId,
         uint256[4] memory encryptedVoteYes,
-        uint256[4] memory encryptedVoteNo,
+        uint256[4] memory encryptedVoteNo
     ) external returns (bool) {
         require(
             state(pollId) == PollState.Active,
