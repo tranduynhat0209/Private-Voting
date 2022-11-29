@@ -38,6 +38,7 @@ interface IToken {
 }
 
 contract Voting {
+    event CreatePoll(uint indexed pollCount, uint[2] indexed publicKey);
     enum PollState {
         Pending,
         Active,
@@ -106,6 +107,7 @@ contract Voting {
         newPoll.daoManager = msg.sender;
         newPoll.canceled = false;
         newPoll.content = content;
+        emit CreatePoll(pollCount, publicKey);
         return pollCount;
     }
 
@@ -236,5 +238,17 @@ contract Voting {
         } else if (poll.eta == 0) {
             return PollState.Succeeded;
         } else return PollState.Done;
+    }
+
+    function getEncryptedVote(
+        uint pollId
+    ) public view returns (uint[4] memory, uint[4] memory) {
+        return (polls[pollId].encryptedVoteYes, polls[pollId].encryptedVoteNo);
+    }
+
+    function getPublicKey(
+        uint pollId
+    ) public view returns (uint[2] memory) {
+        return (polls[pollId].publicKey);
     }
 }

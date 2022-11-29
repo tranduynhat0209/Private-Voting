@@ -255,7 +255,7 @@ contract Token {
         uint blockNumber
     ) public view returns (uint96) {
         require(
-            blockNumber < block.number,
+            blockNumber <= block.number,
             "Token::getPriorVotes: not yet determined"
         );
 
