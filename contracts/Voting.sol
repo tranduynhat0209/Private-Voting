@@ -30,6 +30,13 @@ interface ICurveBabyJubJub {
     function isOnCurve(uint256 _x, uint256 _y) external pure returns (bool);
 }
 
+interface IToken {
+    function getPriorVotes(
+        address account,
+        uint blockNumber
+    ) external view returns (uint96);
+}
+
 contract Voting {
     enum PollState {
         Pending,
@@ -65,15 +72,18 @@ contract Voting {
     IVote voteVerifier;
     ICaculator caculatorVerifier;
     ICurveBabyJubJub curve;
+    IToken token;
 
     constructor(
         address _voteVerifier,
         address _caculatorVerifier,
-        address _curve
+        address _curve,
+        address _token
     ) {
         voteVerifier = IVote(_voteVerifier);
         caculatorVerifier = ICaculator(_caculatorVerifier);
         curve = ICurveBabyJubJub(_curve);
+        token = IToken(_token);
     }
 
     function createPoll(
@@ -106,7 +116,6 @@ contract Voting {
         uint256 pollId,
         uint256[4] memory encryptedVoteYes,
         uint256[4] memory encryptedVoteNo,
-        uint256 votes
     ) external returns (bool) {
         require(
             state(pollId) == PollState.Active,
@@ -119,7 +128,7 @@ contract Voting {
             receipt.hasVoted == false,
             "Private-Voting::vote poll: voter already voted"
         );
-        // check votes ??? by snapshot token
+        uint256 votes = uint256(token.getPriorVotes(voter, poll.startBlock));
         require(
             voteVerifier.verifyProof(
                 a,
