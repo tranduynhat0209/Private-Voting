@@ -25,7 +25,7 @@ contract Token {
 
     /// @notice A checkpoint for marking number of votes from a given block
     struct Checkpoint {
-        uint32 fromBlock;
+        uint32 fromTimeStamp;
         uint96 votes;
     }
 
@@ -247,15 +247,15 @@ contract Token {
      * @notice Determine the prior number of votes for an account as of a block number
      * @dev Block number must be a finalized block or else this function will revert to prevent misinformation.
      * @param account The address of the account to check
-     * @param blockNumber The block number to get the vote balance at
+     * @param timeStamp The time stamp to get the vote balance at
      * @return The number of votes the account had as of the given block
      */
     function getPriorVotes(
         address account,
-        uint blockNumber
+        uint32 timeStamp
     ) public view returns (uint96) {
         require(
-            blockNumber <= block.number,
+            timeStamp <= block.timestamp,
             "Token::getPriorVotes: not yet determined"
         );
 
@@ -265,12 +265,12 @@ contract Token {
         }
 
         // First check most recent balance
-        if (checkpoints[account][nCheckpoints - 1].fromBlock <= blockNumber) {
+        if (checkpoints[account][nCheckpoints - 1].fromTimeStamp <= timeStamp) {
             return checkpoints[account][nCheckpoints - 1].votes;
         }
 
         // Next check implicit zero balance
-        if (checkpoints[account][0].fromBlock > blockNumber) {
+        if (checkpoints[account][0].fromTimeStamp > timeStamp) {
             return 0;
         }
 
@@ -279,9 +279,9 @@ contract Token {
         while (upper > lower) {
             uint32 center = upper - (upper - lower) / 2; // ceil, avoiding overflow
             Checkpoint memory cp = checkpoints[account][center];
-            if (cp.fromBlock == blockNumber) {
+            if (cp.fromTimeStamp == timeStamp) {
                 return cp.votes;
-            } else if (cp.fromBlock < blockNumber) {
+            } else if (cp.fromTimeStamp < timeStamp) {
                 lower = center;
             } else {
                 upper = center - 1;
@@ -365,19 +365,20 @@ contract Token {
         uint96 oldVotes,
         uint96 newVotes
     ) internal {
-        uint32 blockNumber = safe32(
-            block.number,
+        uint32 blockTimeStamp = safe32(
+            block.timestamp,
             "Token::_writeCheckpoint: block number exceeds 32 bits"
         );
 
         if (
             nCheckpoints > 0 &&
-            checkpoints[delegatee][nCheckpoints - 1].fromBlock == blockNumber
+            checkpoints[delegatee][nCheckpoints - 1].fromTimeStamp ==
+            block.timestamp
         ) {
             checkpoints[delegatee][nCheckpoints - 1].votes = newVotes;
         } else {
             checkpoints[delegatee][nCheckpoints] = Checkpoint(
-                blockNumber,
+                blockTimeStamp,
                 newVotes
             );
             numCheckpoints[delegatee] = nCheckpoints + 1;

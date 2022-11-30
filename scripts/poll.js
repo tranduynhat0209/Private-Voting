@@ -48,8 +48,8 @@ class poll {
     }
 
     async getVotingPower(id) {
-        const startBlock = (await this.contract.polls(id)).startBlock;
-        return (await this.tokenContract.getPriorVotes(this.signer.getAddress(), startBlock));
+        const timestamp = (await this.contract.polls(id)).startTimeStamp;
+        return (await this.tokenContract.getPriorVotes(this.signer.getAddress(), timestamp));
     }
 
     async votePoll(yes, no, id) {

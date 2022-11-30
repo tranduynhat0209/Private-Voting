@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
+import "hardhat/console.sol";
 
 interface IVote {
     function verifyProof(
@@ -33,7 +34,7 @@ interface ICurveBabyJubJub {
 interface IToken {
     function getPriorVotes(
         address account,
-        uint blockNumber
+        uint32 timestamp
     ) external view returns (uint96);
 }
 
@@ -54,7 +55,7 @@ contract Voting {
         uint256 numberVoteYes;
         uint256 numberVoteNo;
         address daoManager;
-        uint64 startBlock;
+        uint32 startTimeStamp;
         uint32 duration;
         uint32 eta;
         bool canceled;
@@ -95,11 +96,11 @@ contract Voting {
     ) external returns (uint256) {
         pollCount++;
         Poll storage newPoll = polls[pollCount];
-        uint64 startBlock = uint64(block.number + votingDelay);
+        uint32 startTimeStamp = uint32(block.timestamp + votingDelay);
         uint32 duration = uint32(votingPeriod);
         newPoll.id = pollCount;
         newPoll.eta = 0;
-        newPoll.startBlock = startBlock;
+        newPoll.startTimeStamp = startTimeStamp;
         newPoll.duration = duration;
         newPoll.publicKey = publicKey;
         newPoll.encryptedVoteYes = [0, 1, 0, 1];
@@ -130,7 +131,9 @@ contract Voting {
             receipt.hasVoted == false,
             "Private-Voting::vote poll: voter already voted"
         );
-        uint256 votes = uint256(token.getPriorVotes(voter, poll.startBlock));
+        uint256 votes = uint256(
+            token.getPriorVotes(voter, poll.startTimeStamp)
+        );
         require(
             voteVerifier.verifyProof(
                 a,
@@ -226,14 +229,14 @@ contract Voting {
     function state(uint256 pollId) public view returns (PollState) {
         Poll storage poll = polls[pollId];
         require(
-            poll.startBlock > 0,
+            poll.startTimeStamp > 0,
             "Private-Voting::state: poll not existed."
         );
         if (poll.canceled) {
             return PollState.Canceled;
-        } else if (block.number <= poll.startBlock) {
+        } else if (block.timestamp <= poll.startTimeStamp) {
             return PollState.Pending;
-        } else if (block.number <= (poll.startBlock + poll.duration)) {
+        } else if (block.timestamp <= (poll.startTimeStamp + poll.duration)) {
             return PollState.Active;
         } else if (poll.eta == 0) {
             return PollState.Succeeded;
@@ -246,9 +249,7 @@ contract Voting {
         return (polls[pollId].encryptedVoteYes, polls[pollId].encryptedVoteNo);
     }
 
-    function getPublicKey(
-        uint pollId
-    ) public view returns (uint[2] memory) {
+    function getPublicKey(uint pollId) public view returns (uint[2] memory) {
         return (polls[pollId].publicKey);
     }
 }
