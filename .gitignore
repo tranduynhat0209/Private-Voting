@@ -127,3 +127,4 @@ typechain-types
 cache
 artifacts
 
+secrets.json
