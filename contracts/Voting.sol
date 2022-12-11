@@ -194,8 +194,9 @@ contract Voting {
         uint256[2] memory totalDecryptVote
     ) external returns (bool) {
         require(
-            state(pollId) == PollState.Succeeded,
-            "Private-Voting::close poll: poll only can be closed if it is succeeded"
+            state(pollId) == PollState.Succeeded ||
+                state(pollId) == PollState.Active,
+            "Private-Voting::close poll: poll only can be closed if it is succeeded or active"
         );
         Poll storage poll = polls[pollId];
         require(
@@ -235,11 +236,11 @@ contract Voting {
             return PollState.Canceled;
         } else if (block.timestamp <= poll.startTimeStamp) {
             return PollState.Pending;
+        } else if (poll.eta != 0) {
+            return PollState.Done;
         } else if (block.timestamp <= (poll.startTimeStamp + poll.duration)) {
             return PollState.Active;
-        } else if (poll.eta == 0) {
-            return PollState.Succeeded;
-        } else return PollState.Done;
+        } else return PollState.Succeeded;
     }
 
     function getEncryptedVote(
