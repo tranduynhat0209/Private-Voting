@@ -8,45 +8,32 @@ const { utils } = require("ffjavascript");
 const path = require("path");
 const wasm_tester = require("circom_tester/wasm/tester");
 
-const circomlibjs = require("circomlibjs");
-const crypto = require("crypto");
-class poll {
-    async generateKeyPair() {
-        this.babyJub = await circomlibjs.buildBabyjub();
-        this.prvKey = BigInt(`0x${crypto.randomBytes(31).toString('hex')}`);
-        this.pubKey = this.babyJub.mulPointEscalar(this.babyJub.Base8, this.prvKey);
-        return { prvKey: this.prvKey, pubKey: this.pubKey };
-    }
 
-    vote(x) {
-        const r = Math.floor(Math.random() * 1000);
-        var M = this.babyJub.mulPointEscalar(this.babyJub.Base8, x);
-        var gamma = this.babyJub.mulPointEscalar(this.babyJub.Base8, r);
-        var delta = this.babyJub.mulPointEscalar(this.pubKey, r);
-        delta = this.babyJub.addPoint(delta, M);
-        return { gamma, delta };
-    }
-}
+
 describe("vote circom", async () => {
     it("test", async () => {
-        const pr = new poll();
-        await pr.generateKeyPair();
+        let x, r, g, h, D, kX, kR;
 
-        const x = 400;
-        const yes = 100;
-        const no = 200;
-
-        const rYes = 1234;
-        const rNo = 4567;
+        x = BigInt(Math.floor(Math.random() * 10));
+        r = BigInt(Math.floor(Math.random() * 10));
+        g = BigInt(Math.floor(Math.random() * 10));
+        h = BigInt(Math.floor(Math.random() * 10));
+        D = BigInt(Math.floor(Math.random() * 10));
+        kX = BigInt(Math.floor(Math.random() * 10));
+        kR = BigInt(Math.floor(Math.random() * 10));
 
         ///// vote
         const circuit = await wasm_tester(path.join("circuits", "vote.circom"));
 
         const w = await circuit.calculateWitness(
             {
-                Dx: utils.stringifyFElements(pr.babyJub.F, pr.pubKey[0]),
-                Dy: utils.stringifyFElements(pr.babyJub.F, pr.pubKey[0]),
-                x, yes, no, rYes, rNo
+                x: x,
+                r: r,
+                g: g,
+                h: h,
+                D: D,
+                kX: kX,
+                kR: kR
             }
         )
 
