@@ -47,7 +47,6 @@ const decryptElgamma = (prvKey, gamma, delta) => {
     prvKey = BigInt(prvKey);
     gamma = BigInt(gamma.toString());
     delta = BigInt(delta.toString());
-    console.log(prvKey);
     return delta * power(power(gamma, prvKey), mod - BigInt(2)) % mod;
 }
 class poll {
@@ -70,20 +69,36 @@ class poll {
         return (await this.tokenContract.getPriorVotes(this.signer.getAddress(), timestamp));
     }
 
-    async votePoll(id, vote) {
+    async votePoll(id, vote, sign) {
         vote = BigInt(vote);
         const pubKey = (await this.contract.polls(id)).publicKey.toString();
-
+        var power = BigInt((await this.getVotingPower(id)).toString());
         var r = BigInt(Math.floor(Math.random() * 1000));
         var kx = BigInt(Math.floor(Math.random() * 1000));
         var kr = BigInt(Math.floor(Math.random() * 1000));
-        var pedersen = power(this.g, vote) * power(this.h, r) % mod;
-        var gammaX = power(this.g, kx);
-        var deltaX = power(pubKey, kx) * vote % mod;
-        var gammaR = power(this.g, kr);
-        var deltaR = power(pubKey, kr) * r % mod;
+        // var pedersen = power(this.g, vote) * power(this.h, r) % mod;
+        // var gammaX = power(this.g, kx);
+        // var deltaX = power(pubKey, kx) * vote % mod;
+        // var gammaR = power(this.g, kr);
+        // var deltaR = power(pubKey, kr) * r % mod;
+        var { proof, publicSignals } = await snarkjs.groth16.fullProve(
+            {
+                xFake: vote,
+                sign,
+                X: power,
+                r,
+                g: this.g,
+                h: this.h,
+                D: pubKey,
+                kX: kx,
+                kR: kr,
+            },
+            path.join("circuits", "vote.wasm"),
+            path.join("circuits", "vote.zkey")
 
-        await this.contract.votePoll(id, pedersen, gammaX, deltaX, gammaR, deltaR);
+        );
+        const { a, b, c, publicInputs } = await genCallData(proof, publicSignals)
+        await this.contract.votePoll(a, b, c, id, publicInputs[0], publicInputs[1], publicInputs[2], publicInputs[3], publicInputs[4], { gasLimit: 1e6 });
 
     }
 
@@ -97,12 +112,11 @@ class poll {
         let totalR = BigInt(0);
 
         events.forEach((e) => {
-            totalX += decryptElgamma(prvKey, e.args["gammaX"], e.args["deltaX"]);
-            totalR += decryptElgamma(prvKey, e.args["gammaR"], e.args["deltaR"]);
+            totalX = (totalX + decryptElgamma(prvKey, e.args["gammaX"], e.args["deltaX"])) % mod;
+            totalR = (totalR + decryptElgamma(prvKey, e.args["gammaR"], e.args["deltaR"])) % mod;
         })
 
-        console.log(totalX);
-        console.log(totalR);
+
         await this.contract.closePoll(id, totalX, totalR, { gasLimit: 1e6 });
     }
 

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.9;
 
+import "hardhat/console.sol";
+
 interface IToken {
     function getPriorVotes(
         address account,
@@ -8,12 +10,12 @@ interface IToken {
     ) external view returns (uint96);
 }
 
-interface IVote {
+interface IVerifier {
     function verifyProof(
         uint[2] memory a,
         uint[2][2] memory b,
         uint[2] memory c,
-        uint[8] memory input
+        uint[9] memory input
     ) external view returns (bool r);
 }
 
@@ -29,7 +31,7 @@ contract Voting {
         uint256 id;
         uint256 publicKey;
         uint256 encryptedVote;
-        uint256 numberVote;
+        int256 numberVote;
         address daoManager;
         uint32 startTimeStamp;
         uint32 duration;
@@ -47,18 +49,15 @@ contract Voting {
 
     uint256 public pollCount;
     mapping(uint256 => Poll) public polls;
-    //IVote voteVerifier;
+    IVerifier verifier;
     IToken token;
     uint256 public constant Q =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
     uint256 public constant G = 7907;
     uint256 public constant H = 7867;
 
-    constructor(
-        //address _voteVerifier,
-        address _token
-    ) {
-        //voteVerifier = IVote(_voteVerifier);
+    constructor(address _verifier, address _token) {
+        verifier = IVerifier(_verifier);
         token = IToken(_token);
     }
 
@@ -96,9 +95,9 @@ contract Voting {
     );
 
     function votePoll(
-        // uint[2] memory a,
-        // uint[2][2] memory b,
-        // uint[2] memory c,
+        uint[2] memory a,
+        uint[2][2] memory b,
+        uint[2] memory c,
         uint256 pollId,
         uint256 encryptedVote,
         uint256 gammaX,
@@ -106,11 +105,48 @@ contract Voting {
         uint256 gammaR,
         uint256 deltaR
     ) external {
+        require(
+            state(pollId) == PollState.Active,
+            "Private-Voting::vote poll: poll is closed."
+        );
+        address voter = msg.sender;
+        Poll storage poll = polls[pollId];
+        Receipt storage receipt = poll.receipts[voter];
+        require(
+            receipt.hasVoted == false,
+            "Private-Voting::vote poll: voter already voted"
+        );
+        uint256 votes = uint256(
+            token.getPriorVotes(voter, poll.startTimeStamp)
+        );
+        require(
+            verifier.verifyProof(
+                a,
+                b,
+                c,
+                [
+                    encryptedVote,
+                    gammaX,
+                    deltaX,
+                    gammaR,
+                    deltaR,
+                    votes,
+                    G,
+                    H,
+                    poll.publicKey
+                ]
+            ),
+            "Private-Voting::vote poll: proof is incorect"
+        );
         polls[pollId].encryptedVote = mulmod(
             polls[pollId].encryptedVote,
             encryptedVote,
             Q
         );
+        receipt.hasVoted = true;
+        receipt.encryptedVote = encryptedVote;
+        receipt.votePowers = votes;
+        receipt.timeStamp = uint32(block.timestamp);
         emit VotePoll(pollId, gammaX, deltaX, gammaR, deltaR);
     }
 
@@ -132,127 +168,29 @@ contract Voting {
         uint256 totalRandom
     ) external {
         require(
-            mulmod(expmod(G, totalVote), expmod(H, totalRandom), Q) ==
-                polls[pollId].encryptedVote,
+            state(pollId) == PollState.Succeeded ||
+                state(pollId) == PollState.Active,
+            "Private-Voting::close poll: poll only can be closed if it is succeeded or active"
+        );
+        Poll storage poll = polls[pollId];
+        require(
+            totalVote < Q && totalRandom < Q,
+            "totalVote and totalRandom must module Q"
+        );
+        uint checkNegative = (totalVote > Q / 2) ? 1 : 0;
+        require(
+            mulmod(
+                expmod(G, totalVote - checkNegative),
+                expmod(H, totalRandom),
+                Q
+            ) == poll.encryptedVote,
             "decrypt wrong"
         );
-        polls[pollId].numberVote = totalVote;
+
+        uint32 eta = uint32(block.timestamp);
+        poll.eta = eta;
+        poll.numberVote = int(totalVote) - int(checkNegative * Q);
     }
-
-    // function votePoll(
-    //     uint[2] memory a,
-    //     uint[2][2] memory b,
-    //     uint[2] memory c,
-    //     uint256 pollId,
-    //     uint256[4] memory encryptedVoteYes,
-    //     uint256[4] memory encryptedVoteNo
-    // ) external returns (bool) {
-    //     require(
-    //         state(pollId) == PollState.Active,
-    //         "Private-Voting::vote poll: poll is closed."
-    //     );
-    //     address voter = msg.sender;
-    //     Poll storage poll = polls[pollId];
-    //     Receipt storage receipt = poll.receipts[voter];
-    //     require(
-    //         receipt.hasVoted == false,
-    //         "Private-Voting::vote poll: voter already voted"
-    //     );
-    //     uint256 votes = uint256(
-    //         token.getPriorVotes(voter, poll.startTimeStamp)
-    //     );
-    //     require(
-    //         voteVerifier.verifyProof(
-    //             a,
-    //             b,
-    //             c,
-    //             [
-    //                 encryptedVoteYes[0],
-    //                 encryptedVoteYes[1],
-    //                 encryptedVoteYes[2],
-    //                 encryptedVoteYes[3],
-    //                 encryptedVoteNo[0],
-    //                 encryptedVoteNo[1],
-    //                 encryptedVoteNo[2],
-    //                 encryptedVoteNo[3],
-    //                 poll.publicKey[0],
-    //                 poll.publicKey[1],
-    //                 votes
-    //             ]
-    //         ),
-    //         "Private-Voting::vote poll: proof is incorect"
-    //     );
-    //     (poll.encryptedVoteYes[0], poll.encryptedVoteYes[1]) = curve.pointAdd(
-    //         poll.encryptedVoteYes[0],
-    //         poll.encryptedVoteYes[1],
-    //         encryptedVoteYes[0],
-    //         encryptedVoteYes[1]
-    //     );
-    //     (poll.encryptedVoteYes[2], poll.encryptedVoteYes[3]) = curve.pointAdd(
-    //         poll.encryptedVoteYes[2],
-    //         poll.encryptedVoteYes[3],
-    //         encryptedVoteYes[2],
-    //         encryptedVoteYes[3]
-    //     );
-    //     (poll.encryptedVoteNo[0], poll.encryptedVoteNo[1]) = curve.pointAdd(
-    //         poll.encryptedVoteNo[0],
-    //         poll.encryptedVoteNo[1],
-    //         encryptedVoteNo[0],
-    //         encryptedVoteNo[1]
-    //     );
-    //     (poll.encryptedVoteNo[2], poll.encryptedVoteNo[3]) = curve.pointAdd(
-    //         poll.encryptedVoteNo[2],
-    //         poll.encryptedVoteNo[3],
-    //         encryptedVoteNo[2],
-    //         encryptedVoteNo[3]
-    //     );
-    //     receipt.hasVoted = true;
-    //     receipt.encryptedVoteYes = encryptedVoteYes;
-    //     receipt.encryptedVoteNo = encryptedVoteNo;
-    //     receipt.votePowers = votes;
-    //     receipt.timeStamp = uint32(block.timestamp);
-    //     return true;
-    // }
-
-    // function closePoll(
-    //     uint[2] memory a,
-    //     uint[2][2] memory b,
-    //     uint[2] memory c,
-    //     uint256 pollId,
-    //     uint256[2] memory totalDecryptVote
-    // ) external returns (bool) {
-    //     require(
-    //         state(pollId) == PollState.Succeeded ||
-    //             state(pollId) == PollState.Active,
-    //         "Private-Voting::close poll: poll only can be closed if it is succeeded or active"
-    //     );
-    //     Poll storage poll = polls[pollId];
-    //     require(
-    //         caculatorVerifier.verifyProof(
-    //             a,
-    //             b,
-    //             c,
-    //             [
-    //                 poll.encryptedVoteYes[0],
-    //                 poll.encryptedVoteYes[1],
-    //                 poll.encryptedVoteYes[2],
-    //                 poll.encryptedVoteYes[3],
-    //                 totalDecryptVote[0],
-    //                 poll.encryptedVoteNo[0],
-    //                 poll.encryptedVoteNo[1],
-    //                 poll.encryptedVoteNo[2],
-    //                 poll.encryptedVoteNo[3],
-    //                 totalDecryptVote[1]
-    //             ]
-    //         ),
-    //         "Private-Voting::close poll: proof is incorect"
-    //     );
-    //     uint32 eta = uint32(block.timestamp);
-    //     poll.eta = eta;
-    //     poll.numberVoteYes = totalDecryptVote[0];
-    //     poll.numberVoteNo = totalDecryptVote[1];
-    //     return true;
-    // }
 
     function state(uint256 pollId) public view returns (PollState) {
         Poll storage poll = polls[pollId];
