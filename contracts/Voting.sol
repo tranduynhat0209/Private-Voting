@@ -2,6 +2,7 @@
 pragma solidity ^0.8.9;
 
 import "hardhat/console.sol";
+import "./interfaces/IRegister.sol";
 
 interface IToken {
     function getPriorVotes(
@@ -20,6 +21,29 @@ interface IVerifier {
 }
 
 contract Voting {
+    struct AllowedQuery {
+        uint256 issuerId;
+        uint256 factor;
+        uint128 claimSchema;
+        uint16 from;
+        uint16 to;
+        uint8 slotIndex;
+    }
+    struct Cryption {
+        uint256 gammaX;
+        uint256 deltaX;
+        uint256 gammaR;
+        uint256 deltaR;
+    }
+    struct Proof {
+        uint256[2] a;
+        uint256[2][2] b;
+        uint256[2] c;
+        uint256[12] pubSigs;
+        uint256 queryId;
+        uint64 fromTimestamp;
+        uint64 toTimestamp;
+    }
     enum PollState {
         Pending,
         Active,
@@ -37,7 +61,10 @@ contract Voting {
         uint32 duration;
         uint32 eta;
         bool canceled;
+        string tittle;
         string content;
+        bool isTokenVote;
+        mapping(uint256 => bool) queryIds;
         mapping(address => Receipt) receipts;
     }
     struct Receipt {
@@ -51,14 +78,16 @@ contract Voting {
     mapping(uint256 => Poll) public polls;
     IVerifier verifier;
     IToken token;
+    IRegister register;
     uint256 public constant Q =
         21888242871839275222246405745257275088548364400416034343698204186575808495617;
     uint256 public constant G = 7907;
     uint256 public constant H = 7867;
 
-    constructor(address _verifier, address _token) {
+    constructor(address _verifier, address _token, address _register) {
         verifier = IVerifier(_verifier);
         token = IToken(_token);
+        register = IRegister(_register);
     }
 
     event CreatePoll(uint indexed pollCount, uint indexed publicKey);
@@ -67,8 +96,20 @@ contract Voting {
         uint256 votingPeriod,
         uint256 votingDelay,
         uint256 publicKey,
-        string calldata content
+        string calldata tittle,
+        string calldata content,
+        bool isTokenVote,
+        uint256[] calldata queryIds
     ) external returns (uint256) {
+        for (uint i = 0; i < queryIds.length; ) {
+            require(
+                register.queryDisabled(queryIds[i]) == false,
+                "Private-Voting::create poll: queryId is disabled."
+            );
+            unchecked {
+                i += 1;
+            }
+        }
         pollCount++;
         Poll storage newPoll = polls[pollCount];
         uint32 startTimeStamp = uint32(block.timestamp + votingDelay);
@@ -81,7 +122,15 @@ contract Voting {
         newPoll.encryptedVote = 1;
         newPoll.daoManager = msg.sender;
         newPoll.canceled = false;
+        newPoll.tittle = tittle;
         newPoll.content = content;
+        newPoll.isTokenVote = isTokenVote;
+        for (uint i = 0; i < queryIds.length; ) {
+            newPoll.queryIds[queryIds[i]] = true;
+            unchecked {
+                i += 1;
+            }
+        }
         emit CreatePoll(pollCount, publicKey);
         return pollCount;
     }
@@ -94,20 +143,50 @@ contract Voting {
         uint256 deltaR
     );
 
+    function getVotingPower(
+        uint256 pollId,
+        Proof[] calldata proofs,
+        address voter
+    ) public view returns (uint256 votes) {
+        Poll storage poll = polls[pollId];
+        votes = 0;
+        if (poll.isTokenVote) {
+            votes += uint256(token.getPriorVotes(voter, poll.startTimeStamp));
+        }
+        for (uint i = 0; i < proofs.length; ) {
+            require(
+                isQueryOf(proofs[i].queryId, pollId) == true,
+                "Private-Voting::get voting power: queryId not avaible"
+            );
+            require(
+                proofs[i].fromTimestamp >= poll.startTimeStamp,
+                "Private-Voting::get voting power: timeStamp not avaible"
+            );
+            votes += register.getVotingPower(
+                proofs[i].a,
+                proofs[i].b,
+                proofs[i].c,
+                proofs[i].pubSigs,
+                proofs[i].queryId,
+                proofs[i].fromTimestamp,
+                proofs[i].toTimestamp
+            );
+        }
+        return votes;
+    }
+
     function votePoll(
         uint[2] memory a,
         uint[2][2] memory b,
         uint[2] memory c,
         uint256 pollId,
         uint256 encryptedVote,
-        uint256 gammaX,
-        uint256 deltaX,
-        uint256 gammaR,
-        uint256 deltaR
+        Cryption calldata cryption,
+        Proof[] calldata proofs
     ) external {
         require(
             state(pollId) == PollState.Active,
-            "Private-Voting::vote poll: poll is closed."
+            "Private-Voting::vote poll: poll is not activate."
         );
         address voter = msg.sender;
         Poll storage poll = polls[pollId];
@@ -116,9 +195,7 @@ contract Voting {
             receipt.hasVoted == false,
             "Private-Voting::vote poll: voter already voted"
         );
-        uint256 votes = uint256(
-            token.getPriorVotes(voter, poll.startTimeStamp)
-        );
+        uint256 votes = getVotingPower(pollId, proofs, voter);
         require(
             verifier.verifyProof(
                 a,
@@ -126,10 +203,10 @@ contract Voting {
                 c,
                 [
                     encryptedVote,
-                    gammaX,
-                    deltaX,
-                    gammaR,
-                    deltaR,
+                    cryption.gammaX,
+                    cryption.deltaX,
+                    cryption.gammaR,
+                    cryption.deltaR,
                     votes,
                     G,
                     H,
@@ -147,13 +224,19 @@ contract Voting {
         receipt.encryptedVote = encryptedVote;
         receipt.votePowers = votes;
         receipt.timeStamp = uint32(block.timestamp);
-        emit VotePoll(pollId, gammaX, deltaX, gammaR, deltaR);
+        emit VotePoll(
+            pollId,
+            cryption.gammaX,
+            cryption.deltaX,
+            cryption.gammaR,
+            cryption.deltaR
+        );
     }
 
     function expmod(
         uint256 base,
         uint256 exponent
-    ) public returns (uint256 res) {
+    ) public view returns (uint256 res) {
         res = 1;
         for (uint32 i = 0; i < 255; i++) {
             if ((exponent >> i) & 1 == 1) res = mulmod(res, base, Q);
@@ -207,5 +290,19 @@ contract Voting {
         } else if (block.timestamp <= (poll.startTimeStamp + poll.duration)) {
             return PollState.Active;
         } else return PollState.Succeeded;
+    }
+
+    function isQueryOf(
+        uint256 queryId,
+        uint256 pollId
+    ) public view returns (bool) {
+        return polls[pollId].queryIds[queryId];
+    }
+
+    function getReceipt(
+        address user,
+        uint256 pollId
+    ) public view returns (Receipt memory) {
+        return polls[pollId].receipts[user];
     }
 }
