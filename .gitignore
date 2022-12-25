@@ -105,8 +105,6 @@ dist
 
 # Level DB files
 **/db_test/*
-*.zkey
-*.wasm
 *.r1cs
 *.ptau
 .npmignore

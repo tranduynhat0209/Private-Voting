@@ -1,33 +1,20 @@
 const { ethers } = require("hardhat");
 
 async function main() {
-    const [deployer, user0, user1, user2] = await ethers.getSigners();
+    const [deployer] = await ethers.getSigners();
     const zeroAddress = '0x' + '0'.repeat(40);
-    const testAddress = '0xa8C8d2E38407377bCF82d5AAe4783efaB87044f1'
+    const registerAddress = '0xDF69B1DdF58a063FD6573065c106589E1Ca3984B'
     // account address
     console.log("DEPLOYER: " + deployer.address);
-    console.log("user0:" + user0.address);
-    console.log("user1:" + user1.address);
-    console.log("user2:" + user2.address);
-    // delploy token contract
-    const Token = await ethers.getContractFactory("Token");
-    const token = await Token.deploy(testAddress);
-    console.log("Token: " + token.address);
-    // deploy two proof contract
-    const Calculator = await ethers.getContractFactory("contracts/proofs/Calculator.sol:Verifier");
-    const calculator = await Calculator.deploy();
-    console.log("calculator: " + calculator.address);
-    const Vote = await ethers.getContractFactory("contracts/proofs/Vote.sol:Verifier");
-    const vote = await Vote.deploy();
-    console.log("vote: " + vote.address);
-    //deploy baby jub contract
-    const BabyJub = await ethers.getContractFactory("CurveBabyJubJub");
-    const babyJub = await BabyJub.deploy();
-    console.log("baby jub: " + babyJub.address);
-    //deploy voting contract
-    const Voting = await ethers.getContractFactory("Voting");
-    const voting = await Voting.deploy(vote.address, calculator.address, babyJub.address, token.address);
-    console.log("voting contract: " + voting.address);
+
+    const verifierFactory = await ethers.getContractFactory("Verifier");
+    const tokenFactory = await ethers.getContractFactory("Token");
+    const votingFactory = await ethers.getContractFactory("Voting");
+    const verifierContract = await verifierFactory.deploy();
+    const tokenContract = await tokenFactory.deploy(deployer.address);
+    const votingContract = await votingFactory.deploy(verifierContract.address, tokenContract.address, registerAddress);
+    console.log("token contract: " + tokenContract.address)
+    console.log("voting contract: " + votingContract.address);
 }
 
 main()

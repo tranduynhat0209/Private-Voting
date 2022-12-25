@@ -58,10 +58,10 @@ class poll {
         this.h = 7867;
     }
 
-    async createPoll(prvKey, delay, period, content) {
+    async createPoll(prvKey, delay, period, title, content, isTokenVote, queryIds) {
         const pubKey = power(this.g, prvKey);
-        const transaction = await this.contract.createPoll(period, delay, pubKey, content, { gasLimit: 1e6 });
-        return ((await transaction.wait()).events[0].topics[1]);
+        await this.contract.createPoll(period, delay, pubKey, title, content, isTokenVote, queryIds, { gasLimit: 1e6 });
+
     }
 
     async getVotingPower(id) {
@@ -76,11 +76,8 @@ class poll {
         var r = BigInt(Math.floor(Math.random() * 1000));
         var kx = BigInt(Math.floor(Math.random() * 1000));
         var kr = BigInt(Math.floor(Math.random() * 1000));
-        // var pedersen = power(this.g, vote) * power(this.h, r) % mod;
-        // var gammaX = power(this.g, kx);
-        // var deltaX = power(pubKey, kx) * vote % mod;
-        // var gammaR = power(this.g, kr);
-        // var deltaR = power(pubKey, kr) * r % mod;
+
+
         var { proof, publicSignals } = await snarkjs.groth16.fullProve(
             {
                 xFake: vote,
@@ -107,7 +104,10 @@ class poll {
     async closePoll(prvKey, id) {
         let filter = this.contract.filters.VotePoll(id, null, null, null, null);
 
-        let events = await this.contract.queryFilter(filter, 0, await ethers.getDefaultProvider().getBlockNumber());
+        let events = await this.contract.queryFilter(filter,
+            25767970,
+            25767980);
+        console.log(events);
         let totalX = BigInt(0);
         let totalR = BigInt(0);
 

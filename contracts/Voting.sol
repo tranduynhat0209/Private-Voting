@@ -64,6 +64,7 @@ contract Voting {
         string tittle;
         string content;
         bool isTokenVote;
+        mapping(uint256 => bool) isUsedZiden;
         mapping(uint256 => bool) queryIds;
         mapping(address => Receipt) receipts;
     }
@@ -153,7 +154,7 @@ contract Voting {
         if (poll.isTokenVote) {
             votes += uint256(token.getPriorVotes(voter, poll.startTimeStamp));
         }
-        for (uint i = 0; i < proofs.length; ) {
+        for (uint i = 0; i < proofs.length; i++) {
             require(
                 isQueryOf(proofs[i].queryId, pollId) == true,
                 "Private-Voting::get voting power: queryId not avaible"
@@ -161,6 +162,10 @@ contract Voting {
             require(
                 proofs[i].fromTimestamp >= poll.startTimeStamp,
                 "Private-Voting::get voting power: timeStamp not avaible"
+            );
+            require(
+                poll.isUsedZiden[proofs[i].pubSigs[0]] == false,
+                "one of Metric Ziden is use"
             );
             votes += register.getVotingPower(
                 proofs[i].a,
@@ -220,6 +225,9 @@ contract Voting {
             encryptedVote,
             Q
         );
+        for (uint i = 0; i < proofs.length; i++) {
+            poll.isUsedZiden[proofs[i].pubSigs[0]] == true;
+        }
         receipt.hasVoted = true;
         receipt.encryptedVote = encryptedVote;
         receipt.votePowers = votes;
